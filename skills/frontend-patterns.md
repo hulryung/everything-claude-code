@@ -1,631 +1,376 @@
 ---
 name: frontend-patterns
-description: Frontend development patterns for React, Next.js, state management, performance optimization, and UI best practices.
+description: Language-agnostic frontend development patterns, UI architecture, and best practices.
 ---
 
 # Frontend Development Patterns
 
-Modern frontend patterns for React, Next.js, and performant user interfaces.
+Language-agnostic patterns for modern frontend development, UI architecture, and performant user interfaces.
 
-## Component Patterns
+## Component Architecture
 
-### Composition Over Inheritance
+### Component Hierarchy
+```
+┌─────────────────────────────────────┐
+│           App (Root)                │
+├─────────────────────────────────────┤
+│  ┌─────────┐  ┌─────────────────┐  │
+│  │ Sidebar │  │   Main Content  │  │
+│  │         │  │  ┌───────────┐  │  │
+│  │ - Nav   │  │  │  Header   │  │  │
+│  │ - Links │  │  ├───────────┤  │  │
+│  │         │  │  │  Content  │  │  │
+│  │         │  │  │  - Card   │  │  │
+│  │         │  │  │  - List   │  │  │
+│  └─────────┘  │  └───────────┘  │  │
+│               └─────────────────┘  │
+└─────────────────────────────────────┘
+```
 
-```typescript
-// ✅ GOOD: Component composition
-interface CardProps {
-  children: React.ReactNode
-  variant?: 'default' | 'outlined'
-}
+### Component Types
 
-export function Card({ children, variant = 'default' }: CardProps) {
-  return <div className={`card card-${variant}`}>{children}</div>
-}
+**1. Presentational Components**
+- Focus on UI appearance
+- Receive data via props
+- No business logic
+- Highly reusable
 
-export function CardHeader({ children }: { children: React.ReactNode }) {
-  return <div className="card-header">{children}</div>
-}
+**2. Container Components**
+- Manage state and data
+- Connect to services/stores
+- Pass data to presentational components
+- Handle business logic
 
-export function CardBody({ children }: { children: React.ReactNode }) {
-  return <div className="card-body">{children}</div>
-}
+**3. Layout Components**
+- Define page structure
+- Handle responsive design
+- Manage spacing and grid
 
-// Usage
+### Composition Pattern
+```
+# Instead of inheritance, compose smaller components
+
 <Card>
-  <CardHeader>Title</CardHeader>
-  <CardBody>Content</CardBody>
+  <CardHeader>
+    <Title>My Title</Title>
+  </CardHeader>
+  <CardBody>
+    <Content />
+  </CardBody>
+  <CardFooter>
+    <Actions />
+  </CardFooter>
 </Card>
 ```
 
-### Compound Components
+## State Management
 
-```typescript
-interface TabsContextValue {
-  activeTab: string
-  setActiveTab: (tab: string) => void
-}
-
-const TabsContext = createContext<TabsContextValue | undefined>(undefined)
-
-export function Tabs({ children, defaultTab }: {
-  children: React.ReactNode
-  defaultTab: string
-}) {
-  const [activeTab, setActiveTab] = useState(defaultTab)
-
-  return (
-    <TabsContext.Provider value={{ activeTab, setActiveTab }}>
-      {children}
-    </TabsContext.Provider>
-  )
-}
-
-export function TabList({ children }: { children: React.ReactNode }) {
-  return <div className="tab-list">{children}</div>
-}
-
-export function Tab({ id, children }: { id: string, children: React.ReactNode }) {
-  const context = useContext(TabsContext)
-  if (!context) throw new Error('Tab must be used within Tabs')
-
-  return (
-    <button
-      className={context.activeTab === id ? 'active' : ''}
-      onClick={() => context.setActiveTab(id)}
-    >
-      {children}
-    </button>
-  )
-}
-
-// Usage
-<Tabs defaultTab="overview">
-  <TabList>
-    <Tab id="overview">Overview</Tab>
-    <Tab id="details">Details</Tab>
-  </TabList>
-</Tabs>
+### State Types
+```
+1. Local State      - Component-specific (form inputs, toggles)
+2. Shared State     - Multiple components (user data, theme)
+3. Server State     - Data from API (cached, synced)
+4. URL State        - Navigation, filters, pagination
 ```
 
-### Render Props Pattern
+### State Lifting
+```
+# When siblings need shared state, lift to parent
 
-```typescript
-interface DataLoaderProps<T> {
-  url: string
-  children: (data: T | null, loading: boolean, error: Error | null) => React.ReactNode
-}
-
-export function DataLoader<T>({ url, children }: DataLoaderProps<T>) {
-  const [data, setData] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
-
-  useEffect(() => {
-    fetch(url)
-      .then(res => res.json())
-      .then(setData)
-      .catch(setError)
-      .finally(() => setLoading(false))
-  }, [url])
-
-  return <>{children(data, loading, error)}</>
-}
-
-// Usage
-<DataLoader<Market[]> url="/api/markets">
-  {(markets, loading, error) => {
-    if (loading) return <Spinner />
-    if (error) return <Error error={error} />
-    return <MarketList markets={markets!} />
-  }}
-</DataLoader>
+Parent (owns state)
+├── ChildA (receives state as prop)
+└── ChildB (receives state as prop)
 ```
 
-## Custom Hooks Patterns
+### Global State Guidelines
+- Only put truly global data in global state
+- Keep state as local as possible
+- Normalize complex data structures
+- Avoid duplicating server data
 
-### State Management Hook
+## Data Fetching Patterns
 
-```typescript
-export function useToggle(initialValue = false): [boolean, () => void] {
-  const [value, setValue] = useState(initialValue)
-
-  const toggle = useCallback(() => {
-    setValue(v => !v)
-  }, [])
-
-  return [value, toggle]
-}
-
-// Usage
-const [isOpen, toggleOpen] = useToggle()
+### Loading States
+```
+┌─────────────────────────────┐
+│  Loading: Show skeleton     │
+│  Error: Show error message  │
+│  Empty: Show empty state    │
+│  Success: Show data         │
+└─────────────────────────────┘
 ```
 
-### Async Data Fetching Hook
-
-```typescript
-interface UseQueryOptions<T> {
-  onSuccess?: (data: T) => void
-  onError?: (error: Error) => void
-  enabled?: boolean
-}
-
-export function useQuery<T>(
-  key: string,
-  fetcher: () => Promise<T>,
-  options?: UseQueryOptions<T>
-) {
-  const [data, setData] = useState<T | null>(null)
-  const [error, setError] = useState<Error | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const refetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const result = await fetcher()
-      setData(result)
-      options?.onSuccess?.(result)
-    } catch (err) {
-      const error = err as Error
-      setError(error)
-      options?.onError?.(error)
-    } finally {
-      setLoading(false)
-    }
-  }, [fetcher, options])
-
-  useEffect(() => {
-    if (options?.enabled !== false) {
-      refetch()
-    }
-  }, [key, refetch, options?.enabled])
-
-  return { data, error, loading, refetch }
-}
-
-// Usage
-const { data: markets, loading, error, refetch } = useQuery(
-  'markets',
-  () => fetch('/api/markets').then(r => r.json()),
-  {
-    onSuccess: data => console.log('Fetched', data.length, 'markets'),
-    onError: err => console.error('Failed:', err)
-  }
-)
+### Caching Strategy
+```
+1. Cache-first     - Use cache, fetch in background
+2. Network-first   - Try network, fallback to cache
+3. Stale-while-    - Show stale data, update when ready
+   revalidate
 ```
 
-### Debounce Hook
-
-```typescript
-export function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value)
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
-
-    return () => clearTimeout(handler)
-  }, [value, delay])
-
-  return debouncedValue
-}
-
-// Usage
-const [searchQuery, setSearchQuery] = useState('')
-const debouncedQuery = useDebounce(searchQuery, 500)
-
-useEffect(() => {
-  if (debouncedQuery) {
-    performSearch(debouncedQuery)
-  }
-}, [debouncedQuery])
+### Optimistic Updates
+```
+1. User clicks "Like"
+2. Immediately update UI
+3. Send request to server
+4. If fails, rollback UI
 ```
 
-## State Management Patterns
+## Form Handling
 
-### Context + Reducer Pattern
+### Form States
+```
+- Pristine: No changes made
+- Dirty: User has made changes
+- Touched: Field has been focused/blurred
+- Valid/Invalid: Validation status
+- Submitting: Form is being submitted
+```
 
-```typescript
-interface State {
-  markets: Market[]
-  selectedMarket: Market | null
-  loading: boolean
-}
+### Validation Approach
+```
+1. On blur    - Validate when field loses focus
+2. On change  - Validate as user types (debounced)
+3. On submit  - Validate all fields before submit
 
-type Action =
-  | { type: 'SET_MARKETS'; payload: Market[] }
-  | { type: 'SELECT_MARKET'; payload: Market }
-  | { type: 'SET_LOADING'; payload: boolean }
+# Best: Combine on blur + on submit
+```
 
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case 'SET_MARKETS':
-      return { ...state, markets: action.payload }
-    case 'SELECT_MARKET':
-      return { ...state, selectedMarket: action.payload }
-    case 'SET_LOADING':
-      return { ...state, loading: action.payload }
-    default:
-      return state
-  }
-}
-
-const MarketContext = createContext<{
-  state: State
-  dispatch: Dispatch<Action>
-} | undefined>(undefined)
-
-export function MarketProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, {
-    markets: [],
-    selectedMarket: null,
-    loading: false
-  })
-
-  return (
-    <MarketContext.Provider value={{ state, dispatch }}>
-      {children}
-    </MarketContext.Provider>
-  )
-}
-
-export function useMarkets() {
-  const context = useContext(MarketContext)
-  if (!context) throw new Error('useMarkets must be used within MarketProvider')
-  return context
-}
+### Error Display
+```
+┌─────────────────────────────┐
+│ Email                       │
+│ ┌─────────────────────────┐ │
+│ │ invalid@               │ │
+│ └─────────────────────────┘ │
+│ ⚠ Please enter valid email  │
+└─────────────────────────────┘
 ```
 
 ## Performance Optimization
 
-### Memoization
-
-```typescript
-// ✅ useMemo for expensive computations
-const sortedMarkets = useMemo(() => {
-  return markets.sort((a, b) => b.volume - a.volume)
-}, [markets])
-
-// ✅ useCallback for functions passed to children
-const handleSearch = useCallback((query: string) => {
-  setSearchQuery(query)
-}, [])
-
-// ✅ React.memo for pure components
-export const MarketCard = React.memo<MarketCardProps>(({ market }) => {
-  return (
-    <div className="market-card">
-      <h3>{market.name}</h3>
-      <p>{market.description}</p>
-    </div>
-  )
-})
+### Rendering Optimization
+```
+1. Memoization     - Cache expensive computations
+2. Virtualization  - Render only visible items
+3. Lazy Loading    - Load components on demand
+4. Code Splitting  - Split bundles by route
 ```
 
-### Code Splitting & Lazy Loading
-
-```typescript
-import { lazy, Suspense } from 'react'
-
-// ✅ Lazy load heavy components
-const HeavyChart = lazy(() => import('./HeavyChart'))
-const ThreeJsBackground = lazy(() => import('./ThreeJsBackground'))
-
-export function Dashboard() {
-  return (
-    <div>
-      <Suspense fallback={<ChartSkeleton />}>
-        <HeavyChart data={data} />
-      </Suspense>
-
-      <Suspense fallback={null}>
-        <ThreeJsBackground />
-      </Suspense>
-    </div>
-  )
-}
+### Virtual Lists
+For lists with 100+ items:
+```
+┌─────────────────┐
+│ (buffer above)  │  ← Rendered but hidden
+├─────────────────┤
+│ Visible Item 1  │  ← Visible viewport
+│ Visible Item 2  │
+│ Visible Item 3  │
+├─────────────────┤
+│ (buffer below)  │  ← Rendered but hidden
+└─────────────────┘
+     ↓
+   (1000 more items not rendered)
 ```
 
-### Virtualization for Long Lists
-
-```typescript
-import { useVirtualizer } from '@tanstack/react-virtual'
-
-export function VirtualMarketList({ markets }: { markets: Market[] }) {
-  const parentRef = useRef<HTMLDivElement>(null)
-
-  const virtualizer = useVirtualizer({
-    count: markets.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 100,  // Estimated row height
-    overscan: 5  // Extra items to render
-  })
-
-  return (
-    <div ref={parentRef} style={{ height: '600px', overflow: 'auto' }}>
-      <div
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          position: 'relative'
-        }}
-      >
-        {virtualizer.getVirtualItems().map(virtualRow => (
-          <div
-            key={virtualRow.index}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: `${virtualRow.size}px`,
-              transform: `translateY(${virtualRow.start}px)`
-            }}
-          >
-            <MarketCard market={markets[virtualRow.index]} />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+### Image Optimization
+```
+1. Lazy load images below fold
+2. Use appropriate formats (WebP, AVIF)
+3. Serve responsive sizes (srcset)
+4. Use placeholder/blur during load
 ```
 
-## Form Handling Patterns
-
-### Controlled Form with Validation
-
-```typescript
-interface FormData {
-  name: string
-  description: string
-  endDate: string
-}
-
-interface FormErrors {
-  name?: string
-  description?: string
-  endDate?: string
-}
-
-export function CreateMarketForm() {
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    description: '',
-    endDate: ''
-  })
-
-  const [errors, setErrors] = useState<FormErrors>({})
-
-  const validate = (): boolean => {
-    const newErrors: FormErrors = {}
-
-    if (!formData.name.trim()) {
-      newErrors.name = 'Name is required'
-    } else if (formData.name.length > 200) {
-      newErrors.name = 'Name must be under 200 characters'
-    }
-
-    if (!formData.description.trim()) {
-      newErrors.description = 'Description is required'
-    }
-
-    if (!formData.endDate) {
-      newErrors.endDate = 'End date is required'
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!validate()) return
-
-    try {
-      await createMarket(formData)
-      // Success handling
-    } catch (error) {
-      // Error handling
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <input
-        value={formData.name}
-        onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
-        placeholder="Market name"
-      />
-      {errors.name && <span className="error">{errors.name}</span>}
-
-      {/* Other fields */}
-
-      <button type="submit">Create Market</button>
-    </form>
-  )
-}
+### Bundle Optimization
+```
+1. Tree shaking     - Remove unused code
+2. Minification     - Reduce file size
+3. Compression      - Gzip/Brotli
+4. Code splitting   - Load only what's needed
 ```
 
-## Error Boundary Pattern
+## Error Handling
 
-```typescript
-interface ErrorBoundaryState {
-  hasError: boolean
-  error: Error | null
-}
-
-export class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  ErrorBoundaryState
-> {
-  state: ErrorBoundaryState = {
-    hasError: false,
-    error: null
-  }
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error }
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error boundary caught:', error, errorInfo)
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="error-fallback">
-          <h2>Something went wrong</h2>
-          <p>{this.state.error?.message}</p>
-          <button onClick={() => this.setState({ hasError: false })}>
-            Try again
-          </button>
-        </div>
-      )
-    }
-
-    return this.props.children
-  }
-}
-
-// Usage
-<ErrorBoundary>
-  <App />
-</ErrorBoundary>
+### Error Boundaries
+```
+┌─────────────────────────────────┐
+│         App (Root)              │
+│  ┌───────────────────────────┐  │
+│  │    Error Boundary         │  │
+│  │  ┌─────────────────────┐  │  │
+│  │  │   Widget (may fail) │  │  │
+│  │  └─────────────────────┘  │  │
+│  │                           │  │
+│  │  If error:                │  │
+│  │  "Something went wrong"   │  │
+│  │  [Retry] button           │  │
+│  └───────────────────────────┘  │
+└─────────────────────────────────┘
 ```
 
-## Animation Patterns
-
-### Framer Motion Animations
-
-```typescript
-import { motion, AnimatePresence } from 'framer-motion'
-
-// ✅ List animations
-export function AnimatedMarketList({ markets }: { markets: Market[] }) {
-  return (
-    <AnimatePresence>
-      {markets.map(market => (
-        <motion.div
-          key={market.id}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3 }}
-        >
-          <MarketCard market={market} />
-        </motion.div>
-      ))}
-    </AnimatePresence>
-  )
-}
-
-// ✅ Modal animations
-export function Modal({ isOpen, onClose, children }: ModalProps) {
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          <motion.div
-            className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-          />
-          <motion.div
-            className="modal-content"
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-          >
-            {children}
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  )
-}
+### Error Display Hierarchy
+```
+1. Inline errors     - Field-level validation
+2. Section errors    - Component-level failures
+3. Page errors       - Route-level failures
+4. Global errors     - App-level issues (toast/banner)
 ```
 
-## Accessibility Patterns
+## Accessibility (a11y)
+
+### Semantic HTML
+```html
+<!-- GOOD: Semantic -->
+<nav>
+  <ul>
+    <li><a href="/home">Home</a></li>
+  </ul>
+</nav>
+<main>
+  <article>
+    <h1>Title</h1>
+    <p>Content</p>
+  </article>
+</main>
+
+<!-- BAD: Div soup -->
+<div class="nav">
+  <div class="item" onclick="...">Home</div>
+</div>
+```
 
 ### Keyboard Navigation
+```
+Tab        - Move between interactive elements
+Enter      - Activate buttons, links
+Space      - Toggle checkboxes, buttons
+Escape     - Close modals, dropdowns
+Arrow keys - Navigate within widgets
+```
 
-```typescript
-export function Dropdown({ options, onSelect }: DropdownProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [activeIndex, setActiveIndex] = useState(0)
+### ARIA Guidelines
+```html
+<!-- Label for screen readers -->
+<button aria-label="Close dialog">×</button>
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault()
-        setActiveIndex(i => Math.min(i + 1, options.length - 1))
-        break
-      case 'ArrowUp':
-        e.preventDefault()
-        setActiveIndex(i => Math.max(i - 1, 0))
-        break
-      case 'Enter':
-        e.preventDefault()
-        onSelect(options[activeIndex])
-        setIsOpen(false)
-        break
-      case 'Escape':
-        setIsOpen(false)
-        break
-    }
-  }
+<!-- Describe current state -->
+<button aria-expanded="false">Menu</button>
 
-  return (
-    <div
-      role="combobox"
-      aria-expanded={isOpen}
-      aria-haspopup="listbox"
-      onKeyDown={handleKeyDown}
-    >
-      {/* Dropdown implementation */}
-    </div>
-  )
-}
+<!-- Live regions for updates -->
+<div aria-live="polite">3 items added to cart</div>
 ```
 
 ### Focus Management
+```
+1. Visible focus indicator
+2. Logical tab order
+3. Trap focus in modals
+4. Return focus when modal closes
+```
 
-```typescript
-export function Modal({ isOpen, onClose, children }: ModalProps) {
-  const modalRef = useRef<HTMLDivElement>(null)
-  const previousFocusRef = useRef<HTMLElement | null>(null)
+## Responsive Design
 
-  useEffect(() => {
-    if (isOpen) {
-      // Save currently focused element
-      previousFocusRef.current = document.activeElement as HTMLElement
+### Breakpoints
+```
+Mobile:  < 640px   (sm)
+Tablet:  640-1024px (md)
+Desktop: > 1024px  (lg/xl)
+```
 
-      // Focus modal
-      modalRef.current?.focus()
-    } else {
-      // Restore focus when closing
-      previousFocusRef.current?.focus()
-    }
-  }, [isOpen])
+### Mobile-First Approach
+```css
+/* Base styles for mobile */
+.container {
+  padding: 16px;
+}
 
-  return isOpen ? (
-    <div
-      ref={modalRef}
-      role="dialog"
-      aria-modal="true"
-      tabIndex={-1}
-      onKeyDown={e => e.key === 'Escape' && onClose()}
-    >
-      {children}
-    </div>
-  ) : null
+/* Enhance for larger screens */
+@media (min-width: 640px) {
+  .container {
+    padding: 24px;
+  }
 }
 ```
 
-**Remember**: Modern frontend patterns enable maintainable, performant user interfaces. Choose patterns that fit your project complexity.
+### Responsive Patterns
+```
+1. Fluid layouts    - Percentage widths
+2. Flexible images  - max-width: 100%
+3. Media queries    - Breakpoint styles
+4. Container queries - Component-based responsive
+```
+
+## Animation Guidelines
+
+### Performance
+```
+# GPU-accelerated (smooth)
+transform, opacity
+
+# Causes reflow (avoid)
+width, height, top, left, margin
+```
+
+### Motion Principles
+```
+1. Purpose   - Animation should have meaning
+2. Duration  - 150-300ms for UI, 300-500ms for emphasis
+3. Easing    - ease-out for enter, ease-in for exit
+4. Reduction - Respect prefers-reduced-motion
+```
+
+### Animation States
+```
+Enter:   fade-in, slide-up
+Exit:    fade-out, slide-down
+Hover:   scale, color change
+Loading: skeleton, spinner
+```
+
+## Testing Strategies
+
+### Testing Pyramid
+```
+        /\
+       /E2E\      - Critical user flows
+      /──────\
+     /Integr- \   - Component interactions
+    /  ation   \
+   /────────────\
+  /    Unit      \ - Individual functions
+ /________________\
+```
+
+### What to Test
+```
+1. User interactions  - Click, type, submit
+2. State changes     - Loading, error, success
+3. Edge cases        - Empty, overflow, error
+4. Accessibility     - Keyboard, screen reader
+```
+
+## File Organization
+
+### Feature-Based Structure
+```
+src/
+├── features/
+│   ├── auth/
+│   │   ├── components/
+│   │   ├── hooks/
+│   │   ├── services/
+│   │   └── index.js
+│   └── dashboard/
+│       ├── components/
+│       ├── hooks/
+│       └── index.js
+├── shared/
+│   ├── components/
+│   ├── hooks/
+│   └── utils/
+└── App.js
+```
+
+---
+
+**Remember**: Modern frontend patterns enable maintainable, performant user interfaces. Choose patterns that fit your project complexity - start simple and add abstraction when needed.
